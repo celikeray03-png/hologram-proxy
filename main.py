@@ -1,9 +1,9 @@
 from flask import Flask, jsonify
 import requests
-from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
+# ESPN Lig Kodları
 LIGLER = [
     {"slug": "tur.1", "ad": "Süper Lig"},
     {"slug": "uefa.europa", "ad": "UEFA Avrupa Ligi"},
@@ -18,24 +18,23 @@ LIGLER = [
 
 @app.route('/')
 def home():
-    return "Hologram Cube Proxy Active"
+    return "Hologram Cube Proxy Server Active"
 
 @app.route('/maclar')
 def maclar_cek():
     tum_maclar = []
     
-    # Dün, Bugün ve Yarın (Saat dilimi kaymalarını kesin çözer)
-    dun = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
-    yarin = (datetime.now() + timedelta(days=1)).strftime('%Y%m%d')
-    tarih_araligi = f"{dun}-{yarin}"
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json'
+    })
     
     for lig in LIGLER:
         try:
-            url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{lig['slug']}/scoreboard?dates={tarih_araligi}"
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-            }
-            res = requests.get(url, headers=headers, timeout=5)
+            # Doğrudan aktüel fikstür endpoint'i (Tarih zorlaması yok)
+            url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{lig['slug']}/scoreboard"
+            res = session.get(url, timeout=5)
             
             if res.status_code != 200:
                 continue
@@ -47,11 +46,15 @@ def maclar_cek():
                 comp = event['competitions'][0]
                 status = event['status']
                 
-                ev = comp['competitors'][0]['team'].get('shortDisplayName') or comp['competitors'][0]['team'].get('name', 'EV')
-                dep = comp['competitors'][1]['team'].get('shortDisplayName') or comp['competitors'][1]['team'].get('name', 'DEP')
+                competitors = comp.get('competitors', [])
+                if len(competitors) < 2:
+                    continue
                 
-                ev_skor = int(comp['competitors'][0].get('score', 0))
-                dep_skor = int(comp['competitors'][1].get('score', 0))
+                ev = competitors[0]['team'].get('shortDisplayName') or competitors[0]['team'].get('name', 'EV')
+                dep = competitors[1]['team'].get('shortDisplayName') or competitors[1]['team'].get('name', 'DEP')
+                
+                ev_skor = int(competitors[0].get('score', 0))
+                dep_skor = int(competitors[1].get('score', 0))
                 
                 state = status['type']['state']
                 d = status['type']['shortDetail']
@@ -69,13 +72,13 @@ def maclar_cek():
                 tum_maclar.append({
                     "id": str(event['id']),
                     "lig": lig['ad'],
-                    "ev": ev.upper()[:9],
-                    "dep": dep.upper()[:9],
+                    "ev": str(ev).upper()[:9],
+                    "dep": str(dep).upper()[:9],
                     "evS": ev_skor,
                     "depS": dep_skor,
                     "dk": d
                 })
-        except Exception as e:
+        except Exception:
             continue
             
     return jsonify({"maclar": tum_maclar})
