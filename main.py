@@ -3,7 +3,6 @@ import requests
 
 app = Flask(__name__)
 
-# FotMob Lig ID'leri
 LIG_MAP = {
     47: "Premier League",
     87: "La Liga",
@@ -23,27 +22,30 @@ def home():
 @app.route('/maclar')
 def maclar_cek():
     tum_maclar = []
+    loglar = []
     
-    # FotMob Mobil Endpoint (Engelsiz)
     url = "https://www.fotmob.com/api/matchesData"
     headers = {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json'
     }
     
     try:
-        res = requests.get(url, headers=headers, timeout=6)
+        res = requests.get(url, headers=headers, timeout=8)
+        loglar.append(f"FotMob HTTP Kodu: {res.status_code}")
         
         if res.status_code == 200:
             data = res.json()
             leagues = data.get('leagues', [])
+            loglar.append(f"Toplam Lig Sayisi: {len(leagues)}")
             
+            bulunan_mac_sayisi = 0
             for league in leagues:
                 l_id = league.get('id')
-                
-                # Sadece takip ettiğimiz ligleri alıyoruz
                 if l_id in LIG_MAP:
                     lig_adi = LIG_MAP[l_id]
                     matches = league.get('matches', [])
+                    bulunan_mac_sayisi += len(matches)
                     
                     for m in matches:
                         ev = m.get('home', {}).get('name', 'EV')
@@ -76,7 +78,6 @@ def maclar_cek():
                             live_time = status.get('liveTime', {}).get('short', '')
                             dk = f"{live_time}' CANLI" if live_time else "CANLI"
                         else:
-                            # Maç başlamadıysa başlama saatini alıyoruz
                             startTime = status.get('startTimeStr', '')
                             if startTime and ' ' in startTime:
                                 dk = startTime.split(' ')[1][:5]
@@ -92,9 +93,14 @@ def maclar_cek():
                             "depS": dep_s,
                             "dk": dk
                         })
-
+            
+            loglar.append(f"Hedef Liglerde Bulunan Mac: {bulunan_mac_sayisi}")
+            
     except Exception as e:
-        return jsonify({"maclar": [], "hata": str(e)})
+        loglar.append(f"HATA: {str(e)}")
+
+    if len(tum_maclar) == 0:
+        return jsonify({"maclar": [], "debug_loglar": loglar})
 
     return jsonify({"maclar": tum_maclar})
 
