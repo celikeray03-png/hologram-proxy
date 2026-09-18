@@ -2,6 +2,7 @@ import os
 import time
 import subprocess
 import requests
+import zipfile
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, request
@@ -149,8 +150,14 @@ def convert_and_upload():
     try:
         uploaded_file.save(input_path)
 
-        # Build komutu ile indirilen ffmpeg dosya yolu
+        # İndirilen zip dosyasını kontrol et ve ayıkla
         ffmpeg_bin = os.path.join(os.getcwd(), "ffmpeg")
+        zip_path = os.path.join(os.getcwd(), "ffmpeg.tar.gz")
+
+        if not os.path.exists(ffmpeg_bin) and os.path.exists(zip_path):
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(os.getcwd())
+
         if os.path.exists(ffmpeg_bin):
             os.chmod(ffmpeg_bin, 0o755)
 
