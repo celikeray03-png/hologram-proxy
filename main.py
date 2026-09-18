@@ -3,6 +3,7 @@ import requests
 
 app = Flask(__name__)
 
+# Otomatik Çekilecek Ligler
 LIGLER = [
     {"slug": "tur.1", "ad": "Süper Lig"},
     {"slug": "eng.1", "ad": "Premier League"},
@@ -10,7 +11,40 @@ LIGLER = [
     {"slug": "ita.1", "ad": "Serie A"},
     {"slug": "ger.1", "ad": "Bundesliga"},
     {"slug": "fra.1", "ad": "Ligue 1"},
-    {"slug": "uefa.champions", "ad": "Şampiyonlar Ligi"}
+    {"slug": "uefa.champions", "ad": "Şampiyonlar Ligi"},
+    {"slug": "uefa.europa", "ad": "UEFA Avrupa Ligi"},
+    {"slug": "uefa.europa.conf", "ad": "Konferans Ligi"}
+]
+
+# ELLE EKLENECEK ÖZEL/AVRUPA MAÇLARI (İstediğin zaman buraya ekle/çıkar yapabilirsin)
+MANUEL_MACLAR = [
+    {
+        "id": "m_custom_1",
+        "lig": "UEFA Avrupa Ligi",
+        "ev": "GALATASARAY",
+        "dep": "PAOK",
+        "evS": 0,
+        "depS": 0,
+        "dk": "Çar 22:00"
+    },
+    {
+        "id": "m_custom_2",
+        "lig": "UEFA Avrupa Ligi",
+        "ev": "Fenerbahçe",
+        "dep": "U.SG",
+        "evS": 0,
+        "depS": 0,
+        "dk": "Per 19:45"
+    },
+    {
+        "id": "m_custom_3",
+        "lig": "Konferans Ligi",
+        "ev": "BAŞAKŞEHİR",
+        "dep": "RAPID WIEN",
+        "evS": 0,
+        "depS": 0,
+        "dk": "Çar 17:30"
+    }
 ]
 
 @app.route('/')
@@ -20,9 +54,20 @@ def home():
 @app.route('/maclar')
 def maclar_cek():
     tum_maclar = []
-    loglar = []
+    
+    # 1. Önce Elle Eklediğimiz Özel Maçları Listeye Koyuyoruz
+    for mm in MANUEL_MACLAR:
+        tum_maclar.append({
+            "id": mm["id"],
+            "lig": mm["lig"],
+            "ev": mm["ev"].upper()[:9],
+            "dep": mm["dep"].upper()[:9],
+            "evS": mm["evS"],
+            "depS": mm["depS"],
+            "dk": mm["dk"]
+        })
 
-    # Doğrudan açık mobil API endpoint'i
+    # 2. Otomatik API Maçlarını Çekip Ekliyoruz
     headers = {
         'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
         'Accept': 'application/json'
@@ -32,7 +77,6 @@ def maclar_cek():
         try:
             url = f"https://site.web.api.espn.com/apis/site/v2/sports/soccer/{lig['slug']}/scoreboard"
             res = requests.get(url, headers=headers, timeout=5)
-            loglar.append(f"{lig['slug']}: {res.status_code}")
 
             if res.status_code == 200:
                 data = res.json()
@@ -71,12 +115,8 @@ def maclar_cek():
                         "depS": dep_skor,
                         "dk": str(d)
                     })
-        except Exception as e:
-            loglar.append(f"{lig['slug']} Hata: {str(e)}")
+        except Exception:
             continue
-
-    if len(tum_maclar) == 0:
-        return jsonify({"maclar": [], "debug_loglar": loglar})
 
     return jsonify({"maclar": tum_maclar})
 
