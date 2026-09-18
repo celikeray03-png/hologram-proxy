@@ -4,7 +4,7 @@ import subprocess
 import requests
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 
 app = Flask(__name__)
 
@@ -133,13 +133,12 @@ def maclar_cek():
 
     return jsonify({"maclar": tum_maclar})
 
-@app.route('/convert-upload', methods=['POST'])
-def convert_and_upload():
-    device_ip = request.form.get('device_ip')
+@app.route('/convert', methods=['POST'])
+def convert():
     uploaded_file = request.files.get('file')
 
-    if not device_ip or not uploaded_file:
-        return "<h2>Hata: Eksik Parametre!</h2><a href='javascript:history.back()'>Geri Dön</a>", 400
+    if not uploaded_file:
+        return jsonify({"error": "Eksik dosya"}), 400
 
     filename = uploaded_file.filename
     input_path = f"temp_{filename}"
@@ -149,32 +148,34 @@ def convert_and_upload():
     try:
         uploaded_file.save(input_path)
 
-        # Docker konteynerinde doğrudan sistem FFmpeg'i çalışır
         ffmpeg_cmd = [
             "ffmpeg", "-y",
             "-i", input_path,
             "-vf", "scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2",
             "-q:v", "5",
             "-r", "25",
+            "-preset", "ultrafast",
             "-pix_fmt", "yuvj420p",
             output_path
         ]
         subprocess.run(ffmpeg_cmd, check=True, timeout=40)
 
-        esp32_url = f"http://{device_ip}/upload"
-        with open(output_path, "rb") as f:
-            files = {'upload': (output_filename, f, 'application/octet-stream')}
-            response = requests.post(esp32_url, files=files, timeout=40)
+        if os.path.exists(input_path):
+            os.remove(input_path)
 
-        if os.path.exists(input_path): os.remove(input_path)
-        if os.path.exists(output_path): os.remove(output_path)
+        response = send_file(output_path, as_attachment=True, download_name=output_filename)
 
-        return f"<h2>Dönüştürme ve Yükleme Başarılı!</h2><p>{output_filename} SD karta yüklendi.</p><a href='http://{device_ip}/media'>Geri Dön</a>"
+        @response.call_on_close
+        def cleanup():
+            if os.path.exists(output_path):
+                os.remove(output_path)
+
+        return response
 
     except Exception as e:
         if os.path.exists(input_path): os.remove(input_path)
         if os.path.exists(output_path): os.remove(output_path)
-        return f"<h2>Hata Oluştu!</h2><p>{str(e)}</p><a href='http://{device_ip}/media'>Geri Dön</a>", 500
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
