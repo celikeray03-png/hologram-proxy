@@ -1,6 +1,5 @@
 from flask import Flask, jsonify
 import requests
-from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
@@ -18,21 +17,21 @@ LIGLER = [
 
 @app.route('/')
 def home():
-    return "Hologram Cube Dynamic API Aktif!"
+    return "Hologram Cube Proxy Server Active"
 
 @app.route('/maclar')
 def maclar_cek():
-    # Bugün ve Yarının Tarihlerini Alıyoruz (YYYYMMDD)
-    bugun = datetime.now()
-    yarin = bugun + timedelta(days=1)
-    tarih_param = f"{bugun.strftime('%Y%m%d')}-{yarin.strftime('%Y%m%d')}"
-    
     tum_maclar = []
     
     for lig in LIGLER:
         try:
-            url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{lig['slug']}/scoreboard?dates={tarih_param}"
-            res = requests.get(url, timeout=4)
+            # Tarih parametresini tamamen kaldırıyoruz, ESPN o anki aktif fikstürü otomatik döndürür
+            url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{lig['slug']}/scoreboard"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+            res = requests.get(url, headers=headers, timeout=5)
+            
             if res.status_code != 200:
                 continue
             
@@ -52,23 +51,11 @@ def maclar_cek():
                 state = status['type']['state']
                 d = status['type']['shortDetail']
                 
-                # Tarih/Saat Formatı
                 date_str = event.get('date', '')
-                gun_etiketi = ""
-                if 'T' in date_str:
-                    mac_tarihi = date_str.split('T')[0].replace('-', '')
-                    saat = date_str.split('T')[1][:5]
-                    # Türkiye Saati Ötelemesi (Yaklaşık +3)
-                    saat_int = (int(saat.split(':')[0]) + 3) % 24
-                    saat_fmt = f"{saat_int:02d}:{saat.split(':')[1]}"
-                    
-                    if mac_tarihi == bugun.strftime('%Y%m%d'):
-                        gun_etiketi = f"Bugün {saat_fmt}"
-                    else:
-                        gun_etiketi = f"Yarın {saat_fmt}"
-                
-                if state == "pre":
-                    d = gun_etiketi
+                if state == "pre" and 'T' in date_str:
+                    saat_ham = date_str.split('T')[1][:5]
+                    saat_int = (int(saat_ham.split(':')[0]) + 3) % 24
+                    d = f"{saat_int:02d}:{saat_ham.split(':')[1]}"
                 elif state == "in":
                     d = f"{d} CANLI"
                 elif state == "post" or d in ["FT", "FINAL"]:
@@ -83,7 +70,8 @@ def maclar_cek():
                     "depS": dep_skor,
                     "dk": d
                 })
-        except Exception:
+        except Exception as e:
+            print(f"Hata ({lig['slug']}): {e}")
             continue
             
     return jsonify({"maclar": tum_maclar})
