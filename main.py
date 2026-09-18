@@ -3,7 +3,6 @@ import requests
 
 app = Flask(__name__)
 
-# ESPN Lig Kodları
 LIGLER = [
     {"slug": "tur.1", "ad": "Süper Lig"},
     {"slug": "uefa.europa", "ad": "UEFA Avrupa Ligi"},
@@ -23,64 +22,54 @@ def home():
 @app.route('/maclar')
 def maclar_cek():
     tum_maclar = []
+    loglar = []
     
-    session = requests.Session()
-    session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json'
-    })
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
     
     for lig in LIGLER:
         try:
-            # Doğrudan aktüel fikstür endpoint'i (Tarih zorlaması yok)
             url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{lig['slug']}/scoreboard"
-            res = session.get(url, timeout=5)
+            res = requests.get(url, headers=headers, timeout=5)
             
-            if res.status_code != 200:
-                continue
+            loglar.append(f"{lig['slug']}: HTTP {res.status_code}")
             
-            data = res.json()
-            events = data.get('events', [])
-            
-            for event in events:
-                comp = event['competitions'][0]
-                status = event['status']
+            if res.status_code == 200:
+                data = res.json()
+                events = data.get('events', [])
+                loglar.append(f"{lig['slug']}: {len(events)} mac bulundu")
                 
-                competitors = comp.get('competitors', [])
-                if len(competitors) < 2:
-                    continue
-                
-                ev = competitors[0]['team'].get('shortDisplayName') or competitors[0]['team'].get('name', 'EV')
-                dep = competitors[1]['team'].get('shortDisplayName') or competitors[1]['team'].get('name', 'DEP')
-                
-                ev_skor = int(competitors[0].get('score', 0))
-                dep_skor = int(competitors[1].get('score', 0))
-                
-                state = status['type']['state']
-                d = status['type']['shortDetail']
-                
-                date_str = event.get('date', '')
-                if state == "pre" and 'T' in date_str:
-                    saat_ham = date_str.split('T')[1][:5]
-                    saat_int = (int(saat_ham.split(':')[0]) + 3) % 24
-                    d = f"{saat_int:02d}:{saat_ham.split(':')[1]}"
-                elif state == "in":
-                    d = f"{d} CANLI"
-                elif state == "post" or d in ["FT", "FINAL"]:
-                    d = "MS"
-                
-                tum_maclar.append({
-                    "id": str(event['id']),
-                    "lig": lig['ad'],
-                    "ev": str(ev).upper()[:9],
-                    "dep": str(dep).upper()[:9],
-                    "evS": ev_skor,
-                    "depS": dep_skor,
-                    "dk": d
-                })
-        except Exception:
+                for event in events:
+                    comp = event['competitions'][0]
+                    teams = comp['competitors']
+                    
+                    ev_ad = teams[0]['team'].get('shortDisplayName') or teams[0]['team'].get('name', 'EV')
+                    dep_ad = teams[1]['team'].get('shortDisplayName') or teams[1]['team'].get('name', 'DEP')
+                    
+                    ev_skor = int(teams[0].get('score', 0))
+                    dep_skor = int(teams[1].get('score', 0))
+                    
+                    status = event['status']['type']
+                    d = status.get('shortDetail', '')
+                    
+                    tum_maclar.append({
+                        "id": str(event['id']),
+                        "lig": lig['ad'],
+                        "ev": str(ev_ad).upper()[:9],
+                        "dep": str(dep_ad).upper()[:9],
+                        "evS": ev_skor,
+                        "depS": dep_skor,
+                        "dk": str(d)
+                    })
+        except Exception as e:
+            loglar.append(f"{lig['slug']} HATA: {str(e)}")
             continue
             
+    # Eğer maç bulunamazsa logları ekrana bas ki hatayı görelim
+    if len(tum_maclar) == 0:
+        return jsonify({"maclar": [], "debug_loglar": loglar})
+        
     return jsonify({"maclar": tum_maclar})
 
 if __name__ == '__main__':
