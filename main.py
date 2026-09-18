@@ -2,15 +2,12 @@ import os
 import time
 import subprocess
 import requests
-import urllib.request
-import tarfile
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
-# Türkiye Zaman Dilimi (UTC+3)
 TR_TZ = timezone(timedelta(hours=3))
 
 LIGLER = [
@@ -25,7 +22,6 @@ LIGLER = [
     {"slug": "uefa.europa.conf", "ad": "Konferans Ligi"}
 ]
 
-# Önbellek (Cache) Mekanizması (30 sn TTL)
 CACHE_TTL = 30
 _cache = {
     "timestamp": 0,
@@ -43,30 +39,23 @@ def fetch_single_league_date(lig, t, headers):
 
             for event in events:
                 comps = event.get('competitions', [])
-                if not comps:
-                    continue
+                if not comps: continue
                 comp = comps[0]
                 teams = comp.get('competitors', [])
-                if len(teams) < 2:
-                    continue
+                if len(teams) < 2: continue
 
                 ev_ad = teams[0]['team'].get('shortDisplayName') or teams[0]['team'].get('name', 'EV')
                 dep_ad = teams[1]['team'].get('shortDisplayName') or teams[1]['team'].get('name', 'DEP')
 
-                try:
-                    ev_skor = int(teams[0].get('score', 0))
-                except (ValueError, TypeError):
-                    ev_skor = 0
+                try: ev_skor = int(teams[0].get('score', 0))
+                except (ValueError, TypeError): ev_skor = 0
 
-                try:
-                    dep_skor = int(teams[1].get('score', 0))
-                except (ValueError, TypeError):
-                    dep_skor = 0
+                try: dep_skor = int(teams[1].get('score', 0))
+                except (ValueError, TypeError): dep_skor = 0
 
                 status = event.get('status', {}).get('type', {})
                 state = status.get('state', '')
                 d = status.get('shortDetail', '')
-
                 date_str = event.get('date', '')
 
                 if state == "pre" and 'T' in date_str:
@@ -74,12 +63,9 @@ def fetch_single_league_date(lig, t, headers):
                         saat_ham = date_str.split('T')[1][:5]
                         saat_int = (int(saat_ham.split(':')[0]) + 3) % 24
                         d = f"{saat_int:02d}:{saat_ham.split(':')[1]}"
-                    except Exception:
-                        d = "YAKINDA"
-                elif state == "in":
-                    d = f"{d} CANLI"
-                elif state == "post" or d in ["FT", "FINAL"]:
-                    d = "MS"
+                    except Exception: d = "YAKINDA"
+                elif state == "in": d = f"{d} CANLI"
+                elif state == "post" or d in ["FT", "FINAL"]: d = "MS"
 
                 matches.append({
                     "id": str(event.get('id', '')),
@@ -92,8 +78,7 @@ def fetch_single_league_date(lig, t, headers):
                     "dk": str(d),
                     "_state": state
                 })
-    except Exception:
-        pass
+    except Exception: pass
     return matches
 
 @app.route('/')
@@ -105,11 +90,9 @@ def maclar_cek():
     global _cache
     now = time.time()
 
-    # Önbellek geçerliyse doğrudan anlık yanıt dön (10-20ms)
     if (now - _cache["timestamp"] < CACHE_TTL) and _cache["data"]:
         return jsonify({"maclar": _cache["data"]})
 
-    # Türkiye Saatine Göre Dün, Bugün, Yarın (UTC + 3)
     tr_simdi = datetime.now(TR_TZ)
     tarihler = [
         {"etiket": "Dün", "str": (tr_simdi - timedelta(days=1)).strftime('%Y%m%d')},
@@ -117,15 +100,10 @@ def maclar_cek():
         {"etiket": "Yarın", "str": (tr_simdi + timedelta(days=1)).strftime('%Y%m%d')}
     ]
 
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-        'Accept': 'application/json'
-    }
-
+    headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
     tum_maclar = []
     tasks = []
 
-    # 3 gün x 9 lig = 27 isteği eşzamanlı (paralel) çalıştırıyoruz (ThreadPoolExecutor)
     with ThreadPoolExecutor(max_workers=10) as executor:
         for t in tarihler:
             for lig in LIGLER:
@@ -134,40 +112,27 @@ def maclar_cek():
         for future in as_completed(tasks):
             try:
                 res = future.result()
-                if res:
-                    tum_maclar.extend(res)
-            except Exception:
-                pass
+                if res: tum_maclar.extend(res)
+            except Exception: pass
 
     if tum_maclar:
-        # Önceliklendirme: Önce Canlı Maçlar, sonra Bugün, sonra Yarın, sonra Dün
         def oncelik_puani(m):
             puan = 0
-            if m.get("_state") == "in":
-                puan += 100
-            if m.get("tarih") == "Bugün":
-                puan += 50
-            elif m.get("tarih") == "Yarın":
-                puan += 20
-            elif m.get("tarih") == "Dün":
-                puan += 10
+            if m.get("_state") == "in": puan += 100
+            if m.get("tarih") == "Bugün": puan += 50
+            elif m.get("tarih") == "Yarın": puan += 20
+            elif m.get("tarih") == "Dün": puan += 10
             return puan
 
         tum_maclar.sort(key=oncelik_puani, reverse=True)
-
-        # Dahili yardımcı alanı temizle
-        for m in tum_maclar:
-            m.pop("_state", None)
-
+        for m in tum_maclar: m.pop("_state", None)
         _cache["data"] = tum_maclar
         _cache["timestamp"] = now
     elif _cache["data"]:
-        # Eğer geçici bir ağ hatası olduysa son başarılı veriyi sun
         return jsonify({"maclar": _cache["data"]})
 
     return jsonify({"maclar": tum_maclar})
 
-# --- VİDEO DÖNÜŞTÜRÜCÜ & AKTARIM SERVİSİ ---
 @app.route('/convert-upload', methods=['POST'])
 def convert_and_upload():
     device_ip = request.form.get('device_ip')
@@ -182,29 +147,15 @@ def convert_and_upload():
     output_path = f"temp_{output_filename}"
 
     try:
-        # 1. Yüklenen dosyayı geçici kaydet
         uploaded_file.save(input_path)
 
-        # 2. FFmpeg executable kontrolü (yoksa otomatik indirir)
+        # Build komutu ile indirilen ffmpeg dosya yolu
         ffmpeg_bin = os.path.join(os.getcwd(), "ffmpeg")
-        if not os.path.exists(ffmpeg_bin):
-            print("FFmpeg indiriliyor...")
-            url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
-            tar_path = "ffmpeg.tar.xz"
-            urllib.request.urlretrieve(url, tar_path)
-            
-            subprocess.run(["tar", "-xf", tar_path], check=True)
-            
-            for root, dirs, files in os.walk("."):
-                if "ffmpeg" in files and root != ".":
-                    extracted_ffmpeg = os.path.join(root, "ffmpeg")
-                    os.rename(extracted_ffmpeg, ffmpeg_bin)
-                    os.chmod(ffmpeg_bin, 0o755)
-                    break
+        if os.path.exists(ffmpeg_bin):
+            os.chmod(ffmpeg_bin, 0o755)
 
-        # 3. FFmpeg ile 320x240, 25 FPS MJPEG formatına dönüştür
         ffmpeg_cmd = [
-            ffmpeg_bin, "-y",
+            ffmpeg_bin if os.path.exists(ffmpeg_bin) else "ffmpeg", "-y",
             "-i", input_path,
             "-vf", "scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2",
             "-q:v", "5",
@@ -212,15 +163,13 @@ def convert_and_upload():
             "-pix_fmt", "yuvj420p",
             output_path
         ]
-        subprocess.run(ffmpeg_cmd, check=True, timeout=60)
+        subprocess.run(ffmpeg_cmd, check=True, timeout=40)
 
-        # 4. Dönüştürülen .mjpeg dosyasını ESP32'ye aktar
         esp32_url = f"http://{device_ip}/upload"
         with open(output_path, "rb") as f:
             files = {'upload': (output_filename, f, 'application/octet-stream')}
             response = requests.post(esp32_url, files=files, timeout=40)
 
-        # Temizlik
         if os.path.exists(input_path): os.remove(input_path)
         if os.path.exists(output_path): os.remove(output_path)
 
