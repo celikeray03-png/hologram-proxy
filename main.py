@@ -1,5 +1,6 @@
 from flask import Flask, jsonify
 import requests
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
@@ -17,11 +18,17 @@ LIGLER = [
 
 @app.route('/')
 def home():
-    return "Hologram Cube Full-Data API Active"
+    return "Hologram Cube Active"
 
 @app.route('/maclar')
 def maclar_cek():
     tum_maclar = []
+    
+    # Bugün, Dün ve Yarın Tarih Formatları (YYYY-MM-DD)
+    simdi = datetime.now()
+    bugun_str = simdi.strftime('%Y-%m-%d')
+    dun_str = (simdi - timedelta(days=1)).strftime('%Y-%m-%d')
+    yarin_str = (simdi + timedelta(days=1)).strftime('%Y-%m-%d')
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
@@ -53,17 +60,28 @@ def maclar_cek():
 
                     date_str = event.get('date', '')
                     
-                    # Ham Tarih (YYYY-MM-DD) ve Saat Ayrıştırma
-                    tarih_ham = "Diğer"
+                    # Sadece Dün, Bugün ve Yarın Maçlarını Filtreleme
                     if 'T' in date_str:
-                        tarih_ham = date_str.split('T')[0]
+                        mac_tarihi = date_str.split('T')[0]
+                        
+                        if mac_tarihi == bugun_str:
+                            gun_etiketi = "Bugün"
+                        elif mac_tarihi == dun_str:
+                            gun_etiketi = "Dün"
+                        elif mac_tarihi == yarin_str:
+                            gun_etiketi = "Yarın"
+                        else:
+                            continue # Dün, Bugün, Yarın dışındakileri atla
+
                         saat_ham = date_str.split('T')[1][:5]
                         saat_int = (int(saat_ham.split(':')[0]) + 3) % 24
                         saat_tr = f"{saat_int:02d}:{saat_ham.split(':')[1]}"
                         
                         if state == "pre":
                             d = saat_tr
-                    
+                    else:
+                        continue
+
                     if state == "in":
                         d = f"{d} CANLI"
                     elif state == "post" or d in ["FT", "FINAL"]:
@@ -72,7 +90,7 @@ def maclar_cek():
                     tum_maclar.append({
                         "id": str(event['id']),
                         "lig": lig['ad'],
-                        "tarih": tarih_ham,
+                        "tarih": gun_etiketi,
                         "ev": str(ev_ad).upper()[:9],
                         "dep": str(dep_ad).upper()[:9],
                         "evS": ev_skor,
