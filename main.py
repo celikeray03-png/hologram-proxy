@@ -5,8 +5,10 @@ import requests
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, request, send_file
+from flask_cors import CORS  # CORS kütüphanesi eklendi
 
 app = Flask(__name__)
+CORS(app)  # Tüm kökenlerden (ESP32 / Tarayıcı) gelen istekler serbest bırakıldı
 
 TR_TZ = timezone(timedelta(hours=3))
 
