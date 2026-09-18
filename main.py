@@ -149,6 +149,7 @@ def convert_and_upload():
     try:
         uploaded_file.save(input_path)
 
+        # Build komutu ile kopyalanan yerel ffmpeg binary
         ffmpeg_bin = os.path.join(os.getcwd(), "ffmpeg")
         if os.path.exists(ffmpeg_bin):
             os.chmod(ffmpeg_bin, 0o755)
