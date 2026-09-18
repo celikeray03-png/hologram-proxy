@@ -2,10 +2,11 @@ import os
 import time
 import subprocess
 import requests
-import imageio_ffmpeg
+import urllib.request
+import tarfile
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from flask import Flask, jsonify, request, render_template_string
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
@@ -184,12 +185,26 @@ def convert_and_upload():
         # 1. Yüklenen dosyayı geçici kaydet
         uploaded_file.save(input_path)
 
-        # 2. imageio_ffmpeg modülünden statik ffmpeg yolunu al
-        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        # 2. FFmpeg executable kontrolü (yoksa otomatik indirir)
+        ffmpeg_bin = os.path.join(os.getcwd(), "ffmpeg")
+        if not os.path.exists(ffmpeg_bin):
+            print("FFmpeg indiriliyor...")
+            url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+            tar_path = "ffmpeg.tar.xz"
+            urllib.request.urlretrieve(url, tar_path)
+            
+            subprocess.run(["tar", "-xf", tar_path], check=True)
+            
+            for root, dirs, files in os.walk("."):
+                if "ffmpeg" in files and root != ".":
+                    extracted_ffmpeg = os.path.join(root, "ffmpeg")
+                    os.rename(extracted_ffmpeg, ffmpeg_bin)
+                    os.chmod(ffmpeg_bin, 0o755)
+                    break
 
         # 3. FFmpeg ile 320x240, 25 FPS MJPEG formatına dönüştür
         ffmpeg_cmd = [
-            ffmpeg_exe, "-y",
+            ffmpeg_bin, "-y",
             "-i", input_path,
             "-vf", "scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2",
             "-q:v", "5",
@@ -197,7 +212,7 @@ def convert_and_upload():
             "-pix_fmt", "yuvj420p",
             output_path
         ]
-        subprocess.run(ffmpeg_cmd, check=True, timeout=40)
+        subprocess.run(ffmpeg_cmd, check=True, timeout=60)
 
         # 4. Dönüştürülen .mjpeg dosyasını ESP32'ye aktar
         esp32_url = f"http://{device_ip}/upload"
