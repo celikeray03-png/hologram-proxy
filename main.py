@@ -3,73 +3,99 @@ import requests
 
 app = Flask(__name__)
 
-LIGLER = [
-    {"slug": "tur.1", "ad": "Süper Lig"},
-    {"slug": "uefa.europa", "ad": "UEFA Avrupa Ligi"},
-    {"slug": "uefa.champions", "ad": "Şampiyonlar Ligi"},
-    {"slug": "uefa.europa.conf", "ad": "Konferans Ligi"},
-    {"slug": "eng.1", "ad": "Premier League"},
-    {"slug": "esp.1", "ad": "La Liga"},
-    {"slug": "ita.1", "ad": "Serie A"},
-    {"slug": "ger.1", "ad": "Bundesliga"},
-    {"slug": "fra.1", "ad": "Ligue 1"}
-]
+# FotMob Lig ID'leri
+LIG_MAP = {
+    47: "Premier League",
+    87: "La Liga",
+    54: "Serie A",
+    53: "Bundesliga",
+    57: "Ligue 1",
+    71: "Süper Lig",
+    42: "Şampiyonlar Ligi",
+    73: "UEFA Avrupa Ligi",
+    10216: "Konferans Ligi"
+}
 
 @app.route('/')
 def home():
-    return "Hologram Cube Proxy Server Active"
+    return "Hologram Cube FotMob Proxy Active"
 
 @app.route('/maclar')
 def maclar_cek():
     tum_maclar = []
-    loglar = []
     
+    # FotMob Mobil Endpoint (Engelsiz)
+    url = "https://www.fotmob.com/api/matchesData"
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
     }
     
-    for lig in LIGLER:
-        try:
-            url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{lig['slug']}/scoreboard"
-            res = requests.get(url, headers=headers, timeout=5)
-            
-            loglar.append(f"{lig['slug']}: HTTP {res.status_code}")
-            
-            if res.status_code == 200:
-                data = res.json()
-                events = data.get('events', [])
-                loglar.append(f"{lig['slug']}: {len(events)} mac bulundu")
-                
-                for event in events:
-                    comp = event['competitions'][0]
-                    teams = comp['competitors']
-                    
-                    ev_ad = teams[0]['team'].get('shortDisplayName') or teams[0]['team'].get('name', 'EV')
-                    dep_ad = teams[1]['team'].get('shortDisplayName') or teams[1]['team'].get('name', 'DEP')
-                    
-                    ev_skor = int(teams[0].get('score', 0))
-                    dep_skor = int(teams[1].get('score', 0))
-                    
-                    status = event['status']['type']
-                    d = status.get('shortDetail', '')
-                    
-                    tum_maclar.append({
-                        "id": str(event['id']),
-                        "lig": lig['ad'],
-                        "ev": str(ev_ad).upper()[:9],
-                        "dep": str(dep_ad).upper()[:9],
-                        "evS": ev_skor,
-                        "depS": dep_skor,
-                        "dk": str(d)
-                    })
-        except Exception as e:
-            loglar.append(f"{lig['slug']} HATA: {str(e)}")
-            continue
-            
-    # Eğer maç bulunamazsa logları ekrana bas ki hatayı görelim
-    if len(tum_maclar) == 0:
-        return jsonify({"maclar": [], "debug_loglar": loglar})
+    try:
+        res = requests.get(url, headers=headers, timeout=6)
         
+        if res.status_code == 200:
+            data = res.json()
+            leagues = data.get('leagues', [])
+            
+            for league in leagues:
+                l_id = league.get('id')
+                
+                # Sadece takip ettiğimiz ligleri alıyoruz
+                if l_id in LIG_MAP:
+                    lig_adi = LIG_MAP[l_id]
+                    matches = league.get('matches', [])
+                    
+                    for m in matches:
+                        ev = m.get('home', {}).get('name', 'EV')
+                        dep = m.get('away', {}).get('name', 'DEP')
+                        
+                        status = m.get('status', {})
+                        score_str = status.get('scoreStr', '0 - 0')
+                        
+                        ev_s = 0
+                        dep_s = 0
+                        if ' - ' in score_str:
+                            try:
+                                parts = score_str.split(' - ')
+                                ev_s = int(parts[0])
+                                dep_s = int(parts[1])
+                            except:
+                                pass
+
+                        started = status.get('started', False)
+                        finished = status.get('finished', False)
+                        cancelled = status.get('cancelled', False)
+                        
+                        dk = status.get('reason', {}).get('short', '')
+                        
+                        if finished:
+                            dk = "MS"
+                        elif cancelled:
+                            dk = "İPTAL"
+                        elif started and not finished:
+                            live_time = status.get('liveTime', {}).get('short', '')
+                            dk = f"{live_time}' CANLI" if live_time else "CANLI"
+                        else:
+                            # Maç başlamadıysa başlama saatini alıyoruz
+                            startTime = status.get('startTimeStr', '')
+                            if startTime and ' ' in startTime:
+                                dk = startTime.split(' ')[1][:5]
+                            else:
+                                dk = "YAKINDA"
+
+                        tum_maclar.append({
+                            "id": str(m.get('id')),
+                            "lig": lig_adi,
+                            "ev": str(ev).upper()[:9],
+                            "dep": str(dep).upper()[:9],
+                            "evS": ev_s,
+                            "depS": dep_s,
+                            "dk": dk
+                        })
+
+    except Exception as e:
+        return jsonify({"maclar": [], "hata": str(e)})
+
     return jsonify({"maclar": tum_maclar})
 
 if __name__ == '__main__':
