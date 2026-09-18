@@ -24,81 +24,68 @@ def home():
 def maclar_cek():
     tum_maclar = []
     
-    # Bugün, Dün ve Yarın Tarih Formatları (YYYY-MM-DD)
-    simdi = datetime.now()
-    bugun_str = simdi.strftime('%Y-%m-%d')
-    dun_str = (simdi - timedelta(days=1)).strftime('%Y-%m-%d')
-    yarin_str = (simdi + timedelta(days=1)).strftime('%Y-%m-%d')
+    # Türkiye Saatine Göre Dün, Bugün, Yarın (UTC + 3)
+    tr_simdi = datetime.utcnow() + timedelta(hours=3)
+    
+    tarihler = [
+        {"etiket": "Dün", "str": (tr_simdi - timedelta(days=1)).strftime('%Y%m%d'), "iso": (tr_simdi - timedelta(days=1)).strftime('%Y-%m-%d')},
+        {"etiket": "Bugün", "str": tr_simdi.strftime('%Y%m%d'), "iso": tr_simdi.strftime('%Y-%m-%d')},
+        {"etiket": "Yarın", "str": (tr_simdi + timedelta(days=1)).strftime('%Y%m%d'), "iso": (tr_simdi + timedelta(days=1)).strftime('%Y-%m-%d')}
+    ]
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
         'Accept': 'application/json'
     }
 
-    for lig in LIGLER:
-        try:
-            url = f"https://site.web.api.espn.com/apis/site/v2/sports/soccer/{lig['slug']}/scoreboard"
-            res = requests.get(url, headers=headers, timeout=5)
+    # Her gün için ayrı sorgu atarak tam döküm alıyoruz
+    for t in tarihler:
+        for lig in LIGLER:
+            try:
+                url = f"https://site.web.api.espn.com/apis/site/v2/sports/soccer/{lig['slug']}/scoreboard?dates={t['str']}"
+                res = requests.get(url, headers=headers, timeout=4)
 
-            if res.status_code == 200:
-                data = res.json()
-                events = data.get('events', [])
+                if res.status_code == 200:
+                    data = res.json()
+                    events = data.get('events', [])
 
-                for event in events:
-                    comp = event['competitions'][0]
-                    teams = comp['competitors']
+                    for event in events:
+                        comp = event['competitions'][0]
+                        teams = comp['competitors']
 
-                    ev_ad = teams[0]['team'].get('shortDisplayName') or teams[0]['team'].get('name', 'EV')
-                    dep_ad = teams[1]['team'].get('shortDisplayName') or teams[1]['team'].get('name', 'DEP')
+                        ev_ad = teams[0]['team'].get('shortDisplayName') or teams[0]['team'].get('name', 'EV')
+                        dep_ad = teams[1]['team'].get('shortDisplayName') or teams[1]['team'].get('name', 'DEP')
 
-                    ev_skor = int(teams[0].get('score', 0))
-                    dep_skor = int(teams[1].get('score', 0))
+                        ev_skor = int(teams[0].get('score', 0))
+                        dep_skor = int(teams[1].get('score', 0))
 
-                    status = event['status']['type']
-                    state = status.get('state')
-                    d = status.get('shortDetail', '')
+                        status = event['status']['type']
+                        state = status.get('state')
+                        d = status.get('shortDetail', '')
 
-                    date_str = event.get('date', '')
-                    
-                    # Sadece Dün, Bugün ve Yarın Maçlarını Filtreleme
-                    if 'T' in date_str:
-                        mac_tarihi = date_str.split('T')[0]
+                        date_str = event.get('date', '')
                         
-                        if mac_tarihi == bugun_str:
-                            gun_etiketi = "Bugün"
-                        elif mac_tarihi == dun_str:
-                            gun_etiketi = "Dün"
-                        elif mac_tarihi == yarin_str:
-                            gun_etiketi = "Yarın"
-                        else:
-                            continue # Dün, Bugün, Yarın dışındakileri atla
+                        if state == "pre" and 'T' in date_str:
+                            saat_ham = date_str.split('T')[1][:5]
+                            saat_int = (int(saat_ham.split(':')[0]) + 3) % 24
+                            d = f"{saat_int:02d}:{saat_ham.split(':')[1]}"
+                        elif state == "in":
+                            d = f"{d} CANLI"
+                        elif state == "post" or d in ["FT", "FINAL"]:
+                            d = "MS"
 
-                        saat_ham = date_str.split('T')[1][:5]
-                        saat_int = (int(saat_ham.split(':')[0]) + 3) % 24
-                        saat_tr = f"{saat_int:02d}:{saat_ham.split(':')[1]}"
-                        
-                        if state == "pre":
-                            d = saat_tr
-                    else:
-                        continue
-
-                    if state == "in":
-                        d = f"{d} CANLI"
-                    elif state == "post" or d in ["FT", "FINAL"]:
-                        d = "MS"
-
-                    tum_maclar.append({
-                        "id": str(event['id']),
-                        "lig": lig['ad'],
-                        "tarih": gun_etiketi,
-                        "ev": str(ev_ad).upper()[:9],
-                        "dep": str(dep_ad).upper()[:9],
-                        "evS": ev_skor,
-                        "depS": dep_skor,
-                        "dk": str(d)
-                    })
-        except Exception:
-            continue
+                        tum_maclar.append({
+                            "id": str(event['id']),
+                            "lig": lig['ad'],
+                            "tarih": t["etiket"],
+                            "ev": str(ev_ad).upper()[:9],
+                            "dep": str(dep_ad).upper()[:9],
+                            "evS": ev_skor,
+                            "depS": dep_skor,
+                            "dk": str(d)
+                        })
+            except Exception:
+                continue
 
     return jsonify({"maclar": tum_maclar})
 
