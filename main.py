@@ -153,7 +153,8 @@ def convert():
         ffmpeg_cmd = [
             "ffmpeg", "-y",
             "-i", input_path,
-            "-vf", "scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2",
+            # Şeffaf/transparan alanları doğrudan siyaha çeker ve 320x240'a oturtur
+            "-vf", "split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse,format=rgba,drawbox=c=black:t=fill,scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2:black",
             "-q:v", "5",
             "-r", "25",
             "-preset", "ultrafast",
