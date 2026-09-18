@@ -149,13 +149,9 @@ def convert_and_upload():
     try:
         uploaded_file.save(input_path)
 
-        # Build komutu ile kopyalanan yerel ffmpeg binary
-        ffmpeg_bin = os.path.join(os.getcwd(), "ffmpeg")
-        if os.path.exists(ffmpeg_bin):
-            os.chmod(ffmpeg_bin, 0o755)
-
+        # Docker konteynerinde doğrudan sistem FFmpeg'i çalışır
         ffmpeg_cmd = [
-            ffmpeg_bin if os.path.exists(ffmpeg_bin) else "ffmpeg", "-y",
+            "ffmpeg", "-y",
             "-i", input_path,
             "-vf", "scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2",
             "-q:v", "5",
@@ -181,5 +177,5 @@ def convert_and_upload():
         return f"<h2>Hata Oluştu!</h2><p>{str(e)}</p><a href='http://{device_ip}/media'>Geri Dön</a>", 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
