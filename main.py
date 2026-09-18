@@ -1,5 +1,6 @@
 from flask import Flask, jsonify
 import requests
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
@@ -17,18 +18,22 @@ LIGLER = [
 
 @app.route('/')
 def home():
-    return "Hologram Cube Proxy Server Active"
+    return "Hologram Cube Proxy Active"
 
 @app.route('/maclar')
 def maclar_cek():
     tum_maclar = []
     
+    # Dün, Bugün ve Yarın (Saat dilimi kaymalarını kesin çözer)
+    dun = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+    yarin = (datetime.now() + timedelta(days=1)).strftime('%Y%m%d')
+    tarih_araligi = f"{dun}-{yarin}"
+    
     for lig in LIGLER:
         try:
-            # Tarih parametresini tamamen kaldırıyoruz, ESPN o anki aktif fikstürü otomatik döndürür
-            url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{lig['slug']}/scoreboard"
+            url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{lig['slug']}/scoreboard?dates={tarih_araligi}"
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
             }
             res = requests.get(url, headers=headers, timeout=5)
             
@@ -71,7 +76,6 @@ def maclar_cek():
                     "dk": d
                 })
         except Exception as e:
-            print(f"Hata ({lig['slug']}): {e}")
             continue
             
     return jsonify({"maclar": tum_maclar})
