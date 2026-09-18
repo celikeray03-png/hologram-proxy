@@ -2,5 +2,3 @@ Flask==3.0.0
 gunicorn==21.2.0
 requests==2.31.0
 python-multipart==0.0.9
-setuptools
-imageio-ffmpeg==0.4.9
