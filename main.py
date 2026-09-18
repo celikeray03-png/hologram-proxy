@@ -2,6 +2,7 @@ import os
 import time
 import subprocess
 import requests
+import imageio_ffmpeg
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, request, render_template_string
@@ -165,7 +166,7 @@ def maclar_cek():
 
     return jsonify({"maclar": tum_maclar})
 
-# --- EKLENEN VİDEO DÖNÜŞTÜRÜCÜ & ELEMAN SERVİSİ ---
+# --- VİDEO DÖNÜŞTÜRÜCÜ & AKTARIM SERVİSİ ---
 @app.route('/convert-upload', methods=['POST'])
 def convert_and_upload():
     device_ip = request.form.get('device_ip')
@@ -183,9 +184,12 @@ def convert_and_upload():
         # 1. Yüklenen dosyayı geçici kaydet
         uploaded_file.save(input_path)
 
-        # 2. FFmpeg ile 320x240, 25 FPS MJPEG formatına dönüştür
+        # 2. imageio_ffmpeg modülünden statik ffmpeg yolunu al
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+
+        # 3. FFmpeg ile 320x240, 25 FPS MJPEG formatına dönüştür
         ffmpeg_cmd = [
-            "ffmpeg", "-y",
+            ffmpeg_exe, "-y",
             "-i", input_path,
             "-vf", "scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2",
             "-q:v", "5",
@@ -193,9 +197,9 @@ def convert_and_upload():
             "-pix_fmt", "yuvj420p",
             output_path
         ]
-        subprocess.run(ffmpeg_cmd, check=True)
+        subprocess.run(ffmpeg_cmd, check=True, timeout=40)
 
-        # 3. Dönüştürülen .mjpeg dosyasını ESP32'ye aktar
+        # 4. Dönüştürülen .mjpeg dosyasını ESP32'ye aktar
         esp32_url = f"http://{device_ip}/upload"
         with open(output_path, "rb") as f:
             files = {'upload': (output_filename, f, 'application/octet-stream')}
