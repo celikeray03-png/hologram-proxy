@@ -1,6 +1,5 @@
 from flask import Flask, jsonify
 import requests
-from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
@@ -18,7 +17,7 @@ LIGLER = [
 
 @app.route('/')
 def home():
-    return "Hologram Cube Live API Ready"
+    return "Hologram Cube Full-Data API Active"
 
 @app.route('/maclar')
 def maclar_cek():
@@ -54,20 +53,10 @@ def maclar_cek():
 
                     date_str = event.get('date', '')
                     
-                    # Tarih & Sekme Grubu Tespiti
-                    gun_etiketi = "Bugün"
+                    # Ham Tarih (YYYY-MM-DD) ve Saat Ayrıştırma
+                    tarih_ham = "Diğer"
                     if 'T' in date_str:
-                        mac_tarihi = date_str.split('T')[0]
-                        bugun_str = datetime.now().strftime('%Y-%m-%d')
-                        yarin_str = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
-                        
-                        if mac_tarihi == bugun_str:
-                            gun_etiketi = "Bugün"
-                        elif mac_tarihi == yarin_str:
-                            gun_etiketi = "Yarın"
-                        else:
-                            gun_etiketi = mac_tarihi[5:] # MM-DD formatı
-
+                        tarih_ham = date_str.split('T')[0]
                         saat_ham = date_str.split('T')[1][:5]
                         saat_int = (int(saat_ham.split(':')[0]) + 3) % 24
                         saat_tr = f"{saat_int:02d}:{saat_ham.split(':')[1]}"
@@ -83,7 +72,7 @@ def maclar_cek():
                     tum_maclar.append({
                         "id": str(event['id']),
                         "lig": lig['ad'],
-                        "gun": gun_etiketi,
+                        "tarih": tarih_ham,
                         "ev": str(ev_ad).upper()[:9],
                         "dep": str(dep_ad).upper()[:9],
                         "evS": ev_skor,
